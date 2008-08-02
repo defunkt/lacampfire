@@ -7,44 +7,92 @@
 // @include       *.campfirenow.com/room*
 // ==/UserScript==
 
-function LALog(e) {
-  new Insertion.Bottom('chat', "<tr><td colspan='2' style='color: red'>A Javascript Error Occurred in the campfire grease monkey script: " + e + "</td></tr>");
+// Logical and awesome
+LA = {}
+
+////
+// Aliases - whatever is typed is expanded to something else
+LA.Aliases = []
+
+// tweet status url => twicture.gif
+LA.Aliases.push(function(text) {
+  var matches = text.match(/^http:\/\/twitter.com\/.+?\/statuses\/(\d+)$/)
+  return matches ? 'http://twictur.es/' + matches[1] + '.gif' : text
+})
+
+////
+// Transforms - plaintext stored in campfire's db is expanded on
+//              receipt or load into something else
+LA.Transformers = []
+
+// gist url => gist embed
+LA.Transformers.push(function(text) {
+  var matches = text.match(/^http:\/\/gist.github.com\/(\d+)$/);
+  if (!matches) return;
+
+  var url   = "http://gist.github.com/" + matches[1] + ".pibb";
+  var divId = 'gist-div-' + (new Date).valueOf()
+  
+  var iframe = new Element('iframe', { 
+    src: url, 
+    height: "200px",
+    width: "100%",
+    style: 'border:0;padding:0;margin:0;display:none;',
+    onload: 'LA.gistFromIframe(this, "' + divId + '")'
+  })  
+  
+  var div = new Element('div', { id: divId }).update('Loading Gist ' + matches[1] + '...')
+  
+  return new Element('div').insert(div).insert(iframe)
+})
+
+LA.gistFromIframe = function(iframe, id) {
+  $(id).remove()
+  $(iframe).show()
 }
 
-if (MessageTransformers) {
-  MessageTransformers = {
-    list: [ImageAutolink, YoutubeVideoAutolink, Autolink],
-    
-    applyFirst: function(text) {
-      return MessageTransformers.list.returnFirstApplication(function(transformer) {
-        return transformer.transform(text);
-      });
-    }
-  };
+if (Campfire) {  
+  ////
+  // Plumbing for the alises
+  chat.speaker.filters = LA.Aliases.concat(Campfire.Speaker.Filters).toArray();  
   
-  MessageTransformers.list.unshift({
-    transform: function(text) {
-      var matches = text.match(/^http:\/\/gist.github.com\/(\d+)$/);
-      if (!matches) return;
+  ////
+  // Plumbing for the transforms
+  LA.Transform = function(messages) {
+    $A(messages || chat.transcript.messages).each(function(message) {
+      if (message.kind != "text") return
+      var text = message.bodyElement().innerText
 
-      var iframe = '<iframe src="#{url}" width="100%" frameborder="0" style="border:0;padding:0;margin:0;"></iframe>';
-      
-      return iframe.interpolate({url: "http://gist.github.com/" + matches[1] + ".pibb"});
-    }
-  });
-}
+      var newText = LA.Transformers.returnFirstApplication(function(transformer) {
+        return transformer(text)
+      })
 
-if (Campfire) {
-  // tweetToTwicture
-  Campfire.Speaker.Filters.push(function(value) {
-    var matches = value.match(/^http:\/\/twitter.com\/.+?\/statuses\/(\d+)$/);
-    return matches ? 'http://twictur.es/' + matches[1] + '.gif' : value;
-  });
+      if (newText) {
+        message.updateBody(newText)
+        if (messages) chat.windowmanager.scrollToBottom()      
+      }
+    }) 
+  }
   
-  window.chat['speaker'].filters = Campfire.Speaker.Filters.toArray();
+  // hook into campfire receive event - called by foreign and local message inserts
+  Campfire.Transformer = Class.create()
+  Campfire.Transformer.prototype = {
+    initialize: function() {},
+    onMessagesInserted: LA.Transform
+  }
+  
+  chat.register("Transformer")
+  
+  // run transforms on load
+  LA.Transform()
+  chat.windowmanager.scrollToBottom()
 }
 
 if (Growler) {
   // remove the built-in growl stuff if a growl userscript is detected
-  Campfire.Responders = Campfire.Responders.without('GrowlNotifier')
+  delete chat.growlnotifier
+}
+
+function LALog(e) {
+  new Insertion.Bottom('chat', "<tr><td colspan='2' style='color: red'>" + e + "</td></tr>");
 }
