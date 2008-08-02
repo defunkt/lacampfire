@@ -81,7 +81,8 @@ if (Campfire) {
     onMessagesInserted: LA.Transform
   }
   
-  chat.register("Transformer")
+  Campfire.Responders.push("Transformer")
+  chat.register.apply(chat, Campfire.Responders)
   
   // run transforms on load
   LA.Transform()
@@ -93,6 +94,7 @@ if (Growler) {
   delete chat.growlnotifier
 }
 
+// debug
 function LALog(e) {
   new Insertion.Bottom('chat', "<tr><td colspan='2' style='color: red'>" + e + "</td></tr>");
 }
